@@ -1,0 +1,35 @@
+services:
+  ledger-signer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ledger-signer
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${PORT:-3000}
+      TRON_API_URL: ${TRON_API_URL:-https://api.trongrid.io}
+      MAINNET_TRON_API_URL: ${MAINNET_TRON_API_URL:-https://api.trongrid.io}
+      TESTNET_TRON_API_URL: ${TESTNET_TRON_API_URL:-https://nile.trongrid.io}
+      TRON_API_KEY: ${TRON_API_KEY:-}
+      KORI_TOKEN_CONTRACT_ADDRESS: ${KORI_TOKEN_CONTRACT_ADDRESS:-}
+      MAINNET_KORI_TOKEN_CONTRACT_ADDRESS: ${MAINNET_KORI_TOKEN_CONTRACT_ADDRESS:-TBJZD8RwQ1JcQvEP9BTbPbgBCGxUjxSXnn}
+      TESTNET_KORI_TOKEN_CONTRACT_ADDRESS: ${TESTNET_KORI_TOKEN_CONTRACT_ADDRESS:-TPKZnRjJngnxVgxw52pMPSrCp2wGm7iT9W}
+      TRON_FEE_LIMIT_SUN: ${TRON_FEE_LIMIT_SUN:-100000000}
+      HOT_WALLET_ADDRESS: ${HOT_WALLET_ADDRESS:-replace-with-hot-wallet-address}
+      HOT_WALLET_PRIVATE_KEY: ${HOT_WALLET_PRIVATE_KEY:-replace-with-private-key}
+      WITHDRAW_SIGNER_API_KEY: ${WITHDRAW_SIGNER_API_KEY:-}
+    ports:
+      - "${LEDGER_SIGNER_BIND_ADDRESS:-127.0.0.1}:${LEDGER_SIGNER_PORT:-3100}:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then((res) => process.exit(res.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - shared-foxya
+    restart: unless-stopped
+
+networks:
+  shared-foxya:
+    external: true
+    name: ${SHARED_DOCKER_NETWORK_NAME:-fox_coin_foxya-network}
