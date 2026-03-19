@@ -1,10 +1,12 @@
 # Ledger Signer Service
 
-별도 signer service로 hot-wallet 서명 책임을 `coin_manage`에서 분리한다.
+별도 signer service로 서명 책임을 `coin_manage`에서 분리한다.
 
 ## 제공 API
 
 - `POST /api/internal/signer/withdrawals/:withdrawalId/broadcast`
+- `POST /api/internal/signer/virtual-wallets/:virtualWalletId/activation-reclaim`
+- `POST /api/internal/signer/foxya-wallets/sweep`
 - `POST /api/internal/signer/tron/broadcast-transfer`
 - `POST /api/internal/signer/tron/broadcast-native`
 - `POST /api/internal/signer/tron/delegate-resource`
@@ -16,6 +18,10 @@
 - `WITHDRAW_SIGNER_API_KEY`: `coin_manage`와 공유하는 내부 API 키
 - `HOT_WALLET_ADDRESS`: signer가 소유한 hot wallet 주소
 - `HOT_WALLET_PRIVATE_KEY`: hot wallet 개인키
+- `COIN_MANAGE_DB_*`: `virtual_wallet_bindings` 조회용 DB 연결 정보
+- `COIN_MANAGE_VIRTUAL_WALLET_ENCRYPTION_KEY`: virtual wallet 개인키 복호화 키
+- `FOXYA_DB_*`: `user_wallets` 조회용 DB 연결 정보
+- `FOXYA_ENCRYPTION_KEY`: foxya 개인키 복호화 키
 - `TRON_API_URL`, `MAINNET_TRON_API_URL`, `TESTNET_TRON_API_URL`: 읽기/브로드캐스트용 RPC
 - `KORI_TOKEN_CONTRACT_ADDRESS`: 현재 런타임 프로파일용 기본 토큰 컨트랙트
 
@@ -35,6 +41,8 @@ WITHDRAW_SIGNER_API_KEY=replace-with-shared-internal-key
 
 - `WITHDRAW_SIGNER_API_URL`은 공통 base path다.
 - 출금 signer 요청은 `/withdrawals/{withdrawalId}/broadcast`로 붙는다.
+- per-wallet reclaim 요청은 `/virtual-wallets/{virtualWalletId}/activation-reclaim`로 붙는다.
+- foxya sweep 요청은 `/foxya-wallets/sweep`로 붙는다.
 - hot-wallet Tron 요청은 `/tron/*`로 붙는다.
 
 ## 로컬 실행
@@ -66,10 +74,15 @@ docker compose up -d --build
 
 ## 현재 범위
 
-현재는 hot-wallet withdraw/native transfer/resource delegation signer boundary만 담당한다.
+현재는 아래 서명 경계를 `ledger-signer`가 담당한다.
 
-아직 남은 일:
+- hot-wallet withdrawal broadcast
+- hot-wallet TRC20/native/resource delegation broadcast
+- virtual wallet activation reclaim
+- foxya deposit wallet sweep
 
-- `foxya user_wallets` 기반 sweep signer lookup 분리
-- `virtual_wallet_bindings` 기반 activation reclaim signer lookup 분리
-- 장기적으로 HSM/MPC 또는 별도 signer vault 연동
+## 남은 고도화
+
+- signer 전용 audit stream
+- signer HA와 장애조치 절차
+- 장기적으로 HSM/MPC 또는 signer vault 연동

@@ -14,6 +14,13 @@ const TRC20_ABI = [
   }
 ] as const;
 
+type Network = 'mainnet' | 'testnet';
+
+type SignerMaterial = {
+  fromAddress?: string;
+  fromPrivateKey?: string;
+};
+
 export class TronSignerService {
   async broadcastWithdrawal(input: { toAddress: string; amountSun: bigint }) {
     return this.broadcastTransfer({ toAddress: input.toAddress, amountSun: input.amountSun });
@@ -22,14 +29,14 @@ export class TronSignerService {
   async broadcastTransfer(input: {
     toAddress: string;
     amountSun: bigint;
-    network?: 'mainnet' | 'testnet';
+    network?: Network;
     apiUrl?: string;
     contractAddress?: string;
     fromAddress?: string;
+    fromPrivateKey?: string;
   }) {
-    const privateKey = env.hotWalletPrivateKey;
-    const fromAddress = input.fromAddress ?? env.hotWalletAddress;
-    const tronWeb = this.createTronWeb(input.apiUrl ?? this.resolveApiUrl(input.network), privateKey);
+    const { fromAddress, privateKey } = this.resolveSigner(input);
+    const tronWeb = this.createTronWeb(input.apiUrl ?? this.resolveApiUrl(input.network), privateKey, fromAddress);
     const contractAddress = input.contractAddress ?? this.resolveContractAddress(input.network);
     const contract = await tronWeb.contract(TRC20_ABI, contractAddress).at(contractAddress);
     const txHash = await contract.transfer(input.toAddress, input.amountSun.toString()).send({
@@ -42,13 +49,13 @@ export class TronSignerService {
   async broadcastNative(input: {
     toAddress: string;
     amountSun: bigint;
-    network?: 'mainnet' | 'testnet';
+    network?: Network;
     apiUrl?: string;
     fromAddress?: string;
+    fromPrivateKey?: string;
   }) {
-    const privateKey = env.hotWalletPrivateKey;
-    const fromAddress = input.fromAddress ?? env.hotWalletAddress;
-    const tronWeb = this.createTronWeb(input.apiUrl ?? this.resolveApiUrl(input.network), privateKey);
+    const { fromAddress, privateKey } = this.resolveSigner(input);
+    const tronWeb = this.createTronWeb(input.apiUrl ?? this.resolveApiUrl(input.network), privateKey, fromAddress);
     const tx = await tronWeb.transactionBuilder.sendTrx(input.toAddress, Number(input.amountSun), fromAddress);
     const signed = await tronWeb.trx.sign(tx, privateKey);
     const broadcast = await tronWeb.trx.sendRawTransaction(signed);
@@ -62,8 +69,9 @@ export class TronSignerService {
     receiverAddress: string;
     amountSun: bigint;
     resource: 'BANDWIDTH' | 'ENERGY';
-    network?: 'mainnet' | 'testnet';
+    network?: Network;
     fromAddress?: string;
+    fromPrivateKey?: string;
     lock?: boolean;
     lockPeriod?: number;
   }) {
@@ -74,8 +82,9 @@ export class TronSignerService {
     receiverAddress: string;
     amountSun: bigint;
     resource: 'BANDWIDTH' | 'ENERGY';
-    network?: 'mainnet' | 'testnet';
+    network?: Network;
     fromAddress?: string;
+    fromPrivateKey?: string;
     lock?: boolean;
     lockPeriod?: number;
   }) {
@@ -88,30 +97,31 @@ export class TronSignerService {
       receiverAddress: string;
       amountSun: bigint;
       resource: 'BANDWIDTH' | 'ENERGY';
-      network?: 'mainnet' | 'testnet';
+      network?: Network;
       fromAddress?: string;
+      fromPrivateKey?: string;
       lock?: boolean;
       lockPeriod?: number;
     }
   ) {
-    const privateKey = env.hotWalletPrivateKey;
-    const fromAddress = input.fromAddress ?? env.hotWalletAddress;
-    const tronWeb = this.createTronWeb(this.resolveApiUrl(input.network), privateKey);
-    const tx = mode === 'delegate'
-      ? await tronWeb.transactionBuilder.delegateResource(
-          Number(input.amountSun),
-          input.receiverAddress,
-          input.resource,
-          fromAddress,
-          Boolean(input.lock),
-          input.lockPeriod ?? 0
-        )
-      : await tronWeb.transactionBuilder.undelegateResource(
-          Number(input.amountSun),
-          input.receiverAddress,
-          input.resource,
-          fromAddress
-        );
+    const { fromAddress, privateKey } = this.resolveSigner(input);
+    const tronWeb = this.createTronWeb(this.resolveApiUrl(input.network), privateKey, fromAddress);
+    const tx =
+      mode === 'delegate'
+        ? await tronWeb.transactionBuilder.delegateResource(
+            Number(input.amountSun),
+            input.receiverAddress,
+            input.resource,
+            fromAddress,
+            Boolean(input.lock),
+            input.lockPeriod ?? 0
+          )
+        : await tronWeb.transactionBuilder.undelegateResource(
+            Number(input.amountSun),
+            input.receiverAddress,
+            input.resource,
+            fromAddress
+          );
     const signed = await tronWeb.trx.sign(tx, privateKey);
     const broadcast = await tronWeb.trx.sendRawTransaction(signed);
     if (!broadcast.result || !broadcast.txid) {
@@ -120,15 +130,30 @@ export class TronSignerService {
     return { txHash: broadcast.txid };
   }
 
-  private createTronWeb(apiUrl: string, privateKey: string) {
-    return new TronWeb({
+  private resolveSigner(input: SignerMaterial) {
+    const privateKey = input.fromPrivateKey ?? env.hotWalletPrivateKey;
+    const fromAddress = input.fromAddress ?? env.hotWalletAddress;
+    const derivedAddress = TronWeb.address.fromPrivateKey(privateKey);
+    if (!derivedAddress || derivedAddress !== fromAddress) {
+      throw new Error('signer private key does not match source address');
+    }
+
+    return { fromAddress, privateKey };
+  }
+
+  private createTronWeb(apiUrl: string, privateKey: string, fromAddress?: string) {
+    const tronWeb = new TronWeb({
       fullHost: apiUrl,
       headers: env.tronApiKey ? { 'TRON-PRO-API-KEY': env.tronApiKey } : undefined,
       privateKey
     });
+    if (fromAddress) {
+      tronWeb.setAddress(fromAddress);
+    }
+    return tronWeb;
   }
 
-  private resolveApiUrl(network?: 'mainnet' | 'testnet') {
+  private resolveApiUrl(network?: Network) {
     if (network === 'testnet') {
       return env.testnetTronApiUrl;
     }
@@ -138,7 +163,7 @@ export class TronSignerService {
     return env.tronApiUrl;
   }
 
-  private resolveContractAddress(network?: 'mainnet' | 'testnet') {
+  private resolveContractAddress(network?: Network) {
     if (network === 'testnet') {
       return env.testnetKoriTokenContractAddress;
     }

@@ -11,6 +11,7 @@
   "dependencies": {
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "pg": "^8.20.0",
     "tronweb": "^6.0.4",
     "zod": "^3.24.2"
   },
